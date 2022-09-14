@@ -1,10 +1,30 @@
 # Configure the aws provider
 provider "aws" {
   region = "us-east-1"
+  #  shared_credentials_files = "/home/sebastian/.aws/credentials"
 }
+
 # Retrieve the list of AZs in the current AWS region
 data "aws_availability_zones" "available" {}
 data "aws_region" "current" {}
+
+# Terraform Data Block - Lookup Ubuntu 20.04
+data "aws_ami" "ubuntu" {
+  most_recent = true
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-focal-20.04-amd64-server-*"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+
+  owners = ["099720109477"]
+}
+
 # Define the vpc
 resource "aws_vpc" "vpc" {
   cidr_block = var.vpc_cidr
@@ -14,31 +34,37 @@ resource "aws_vpc" "vpc" {
     Terraform   = "true"
   }
 }
+
 # Deploy the private subnets
 resource "aws_subnet" "private_subnets" {
   for_each          = var.private_subnets
   vpc_id            = aws_vpc.vpc.id
   cidr_block        = cidrsubnet(var.vpc_cidr, 8, each.value)
   availability_zone = tolist(data.aws_availability_zones.available.names)[each.value]
+
   tags = {
     Name      = each.key
     Terraform = "true"
   }
 }
+
 # Deploy the public subnets
 resource "aws_subnet" "public_subnets" {
   for_each          = var.public_subnets
   vpc_id            = aws_vpc.vpc.id
   cidr_block        = cidrsubnet(var.vpc_cidr, 8, each.value + 100)
   availability_zone = tolist(data.aws_availability_zones.available.names)[each.value]
+
   tags = {
     Name      = each.key
     Terraform = "true"
   }
 }
+
 # Crate route tables for public and private subnets
 resource "aws_route_table" "public_route_table" {
   vpc_id = aws_vpc.vpc.id
+
   route {
     cidr_block = "0.0.0.0/0"
     gateway_id = aws_internet_gateway.internet_gateway.id
@@ -49,8 +75,10 @@ resource "aws_route_table" "public_route_table" {
     Terraform = "true"
   }
 }
+
 resource "aws_route_table" "private_route_table" {
   vpc_id = aws_vpc.vpc.id
+
   route {
     cidr_block = "0.0.0.0/0"
     # gateway_id = aws_internet_gateway.internet_gateway.id
@@ -61,6 +89,7 @@ resource "aws_route_table" "private_route_table" {
     Terraform = "true"
   }
 }
+
 # Create route table associations
 resource "aws_route_table_association" "public" {
   depends_on     = [aws_subnet.public_subnets]
@@ -68,12 +97,14 @@ resource "aws_route_table_association" "public" {
   for_each       = aws_subnet.public_subnets
   subnet_id      = each.value.id
 }
+
 resource "aws_route_table_association" "private" {
   depends_on     = [aws_subnet.private_subnets]
   route_table_id = aws_route_table.private_route_table.id
   for_each       = aws_subnet.private_subnets
   subnet_id      = each.value.id
 }
+
 # Create Internet Gateway
 resource "aws_internet_gateway" "internet_gateway" {
   vpc_id = aws_vpc.vpc.id
@@ -81,6 +112,7 @@ resource "aws_internet_gateway" "internet_gateway" {
     Name : "demo_igw"
   }
 }
+
 #Create EIP for NAT Gateway
 resource "aws_eip" "nat_gateway_eip" {
   vpc        = true
@@ -89,6 +121,7 @@ resource "aws_eip" "nat_gateway_eip" {
     Name : "demo_igw_eip"
   }
 }
+
 # Create NAT Gateway
 resource "aws_nat_gateway" "nat_gateway" {
   depends_on    = [aws_subnet.public_subnets]
@@ -99,13 +132,26 @@ resource "aws_nat_gateway" "nat_gateway" {
   }
 }
 
-resource "aws_instance" "web" {
-  ami                    = "ami-0c2ab3b8efb09f272"
-  instance_type          = "t2.micro"
-  subnet_id              = aws_subnet.public_subnets["public_subnet_1"].id
-  vpc_security_group_ids = ["<SECURITY_GROUP>"]
+# Terraform Resource Block - To Build EC2 instance in Public Subnet
+resource "aws_instance" "web_server" {                            # BLOCK
+  ami           = data.aws_ami.ubuntu.id                          # Argument with data expression
+  instance_type = "t2.micro"                                      # Argument
+  subnet_id     = aws_subnet.public_subnets["public_subnet_1"].id # Argument with value as expression
+  tags = {
+    Name = "Web EC2 Server"
+  }
+}
+
+resource "aws_s3_bucket" "my-new-s3-bucket" {
+  bucket = "my-new-test-s3-bucket"
 
   tags = {
-    "Terraform" = "true"
+    Name    = "My AWS S3 Bucket"
+    Purpose = "Intro to resource block lab"
   }
+}
+
+resource "aws_s3_bucket_acl" "my_new_bucket_acl" {
+  bucket = aws_s3_bucket.my-new-s3-bucket.id
+  acl    = "private"
 }
