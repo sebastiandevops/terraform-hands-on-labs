@@ -1,5 +1,5 @@
 .idea/
-task[...]/.terraform/
+[...]/.terraform/
 *.terraform/
 **/.terraform.lock.hcl*
 **/terraform.tfstate*
