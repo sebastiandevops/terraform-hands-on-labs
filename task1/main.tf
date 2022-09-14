@@ -98,3 +98,14 @@ resource "aws_nat_gateway" "nat_gateway" {
     Name : "demo_nat_gateway"
   }
 }
+
+resource "aws_instance" "web" {
+  ami                    = "ami-0c2ab3b8efb09f272"
+  instance_type          = "t2.micro"
+  subnet_id              = aws_subnet.public_subnets["public_subnet_1"].id
+  vpc_security_group_ids = ["<SECURITY_GROUP>"]
+
+  tags = {
+    "Terraform" = "true"
+  }
+}
